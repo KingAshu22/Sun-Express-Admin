@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { useMediaQuery } from "react-responsive";
-import { DataTablePagination } from "./data-table-pagination"
+import { DataTablePagination } from "./data-table-pagination";
 import { useRouter } from "next/navigation";
 
 export function DataTable({ columns, data }) {

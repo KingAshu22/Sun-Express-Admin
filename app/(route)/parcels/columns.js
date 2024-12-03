@@ -24,7 +24,7 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { formatToIndianNumber } from "@/lib/utils";
-import Modal from "@/app/components/Modal";
+import Modal from "@/app/_components/Modal";
 
 export const columns = [
     {
