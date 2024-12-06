@@ -9,11 +9,16 @@ const SingleSearch = ({
     setSelectedItem,
     showSearch = true,
     isOneLine = false,
+    onInputChange, // New prop for input change callback
 }) => {
     const [searchTerm, setSearchTerm] = useState("");
 
     const handleChange = (e) => {
-        setSearchTerm(e.target.value);
+        const value = e.target.value;
+        setSearchTerm(value);
+        if (onInputChange) {
+            onInputChange(value); // Call the onInputChange prop
+        }
     };
 
     const handleSelectItem = (item) => {
@@ -66,7 +71,7 @@ const SingleSearch = ({
                 <input
                     type="text"
                     value={searchTerm}
-                    onChange={handleChange}
+                    onChange={handleChange} // Updated handler
                     placeholder={`Search ${type}`}
                     className="w-full px-2 py-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />

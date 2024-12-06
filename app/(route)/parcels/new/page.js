@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns"
 import { Calendar as CalendarIcon } from "lucide-react"
 
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import SingleSearch from "@/app/_components/SingleSearch";
 import { Countries } from "@/app/constants/country";
+import axios from "axios";
 
 export default function CreateParcelForm() {
     const [date, setDate] = useState();
@@ -68,6 +69,139 @@ export default function CreateParcelForm() {
     const [parcelStatus, setParcelStatus] = useState([]);
     const [subtotal, setSubtotal] = useState(0);
     const [total, setTotal] = useState(0);
+
+    const [senderNameOptions, setSenderNameOptions] = useState([]);
+    const [receiverNameOptions, setReceiverNameOptions] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        getInvoiceNumber();
+    }, []);
+
+    useEffect(() => {
+        CheckBillToSelector()
+    }, [billToSelector]);
+
+    const CheckBillToSelector = (name, address, contact) => {
+        if (billToSelector === "Sender") {
+            setBillToName(name);
+            setBillToAddress(address);
+            setBillToContact(contact);
+        } else if (billToSelector === "Receiver") {
+            setBillToName(name);
+            setBillToAddress(address);
+            setBillToContact(contact);
+        } else {
+            setBillToName("");
+            setBillToAddress("");
+            setBillToContact("");
+        }
+    };
+
+    useEffect(() => {
+        if (billToSelector === "Sender") {
+            CheckBillToSelector(senderName, senderAddress, senderContact);
+        } else if (billToSelector === "Receiver") {
+            CheckBillToSelector(receiverName, receiverAddress, receiverContact);
+        }
+    }, [billToSelector, senderName, senderAddress, senderContact, receiverName, receiverAddress, receiverContact]);
+
+
+    const getInvoiceNumber = async () => {
+        try {
+            const response = await axios.get("/api/get-last-invoice");
+            const lastInvoiceNumber = response.data.invoiceNumber;
+
+            // Extract the last number part from the invoice number
+            const parts = lastInvoiceNumber.split("/");
+            let lastNumber = parseInt(parts[1], 10); // Extract the numeric part and parse it
+
+            // Increment the number and ensure it is at least 3 digits
+            const incrementedNumber = (lastNumber + 1).toString().padStart(3, "0");
+
+            // Construct the new invoice number
+            const newInvoiceNumber = `${parts[0]}/${incrementedNumber}`;
+
+            // Set the new invoice number
+            setInvoiceNumber(newInvoiceNumber);
+            setTrackingNumber(response.data.trackingNumber);
+        } catch (error) {
+            console.error("Error fetching parcel:", error);
+            setError("Failed to fetch parcel. Please try again later.");
+        }
+    };
+
+    const fetchCustomerNames = async (query, type) => {
+        console.log("Query", query);
+
+        if (!query) {
+            setSenderNameOptions([]);
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const response = await axios.get(`/api/customer?query=${query}`);
+            type === "sender" ?
+                setSenderNameOptions(response.data.map((customer) => customer.name))
+                : setReceiverNameOptions(response.data.map((customer) => customer.name));
+        } catch (error) {
+            console.error("Error fetching customer names:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Function to fetch details of the selected sender
+    const fetchCustomerDetails = async (name, type) => {
+        try {
+            const response = await axios.get(`/api/customer?query=${name}`);
+            const customer = response.data[0]; // Assuming the first match is the desired one
+            if (customer) {
+                if (type === "sender") {
+                    const senderName = name;
+                    const senderAddress = customer.address;
+                    const senderContact = customer.contact;
+                    const senderCountry = customer.country;
+                    const senderZipCode = customer.zip;
+                    const senderKycType = customer?.kyc?.type;
+                    const senderKyc = customer?.kyc?.kyc;
+                    const senderGst = customer?.gst;
+
+                    setSenderAddress(senderAddress);
+                    setSenderContact(senderContact);
+                    setSenderCountry(senderCountry);
+                    setSenderZipCode(senderZipCode);
+                    setKycType(senderKycType);
+                    setKyc(senderKyc);
+                    setGst(senderGst);
+                    // Automatically set the BillTo details for the sender
+                    setSenderName(senderName);
+                    setBillToName(senderName);
+                    setBillToAddress(senderAddress);
+                    setBillToContact(senderContact);
+                } else {
+                    const receiverName = name;
+                    const receiverAddress = customer.address;
+                    const receiverContact = customer.contact;
+                    const receiverCountry = customer.country;
+                    const receiverZipCode = customer.zip
+
+                    setReceiverAddress(receiverAddress);
+                    setReceiverContact(receiverContact);
+                    setReceiverCountry(receiverCountry);
+                    setReceiverZipCode(receiverZipCode);
+                    // Automatically set the BillTo details for the receiver
+                    setReceiverName(receiverName);
+                    setBillToName(receiverName);
+                    setBillToAddress(receiverAddress);
+                    setBillToContact(receiverContact);
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching customer details:", error);
+        }
+    };
 
     const addBox = () => {
         setBoxes([
@@ -132,7 +266,15 @@ export default function CreateParcelForm() {
             <form>
                 {/* General Parcel Information */}
                 <h1 className="text-xl mb-4">Basic Details for Shipping</h1>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 justify-items-center justify-center items-start content-center gap-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 justify-items-center justify-center items-start content-center gap-4 mb-4">
+                    <div className="grid w-full min-w-sm items-center gap-1.5">
+                        <Label htmlFor="invoiceNumber">Invoice No:</Label>
+                        <Input type="text" placeholder="Invoice No." value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
+                    </div>
+                    <div className="grid w-full min-w-sm items-center gap-1.5">
+                        <Label htmlFor="trackingNumber">Tracking No:</Label>
+                        <Input type="number" placeholder="Tracking No." value={trackingNumber} readOnly />
+                    </div>
                     <div className="grid w-full min-w-sm gap-1.5 mt-4">
                         <Label htmlFor="date" className="lg:-mt-6">Date</Label>
                         <Popover>
@@ -187,12 +329,12 @@ export default function CreateParcelForm() {
                         <Label htmlFor="vesselFlight">Vessel/Flight No:</Label>
                         <Input type="text" placeholder="Vessel/Flight No" value={vesselFlight} onChange={(e) => setVesselFlight(e.target.value)} />
                     </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 justify-items-center justify-center items-start content-center gap-4 mb-4">
                     <div className="grid w-full min-w-sm items-center gap-1.5">
                         <Label htmlFor="portDischarge">Port of Discharge:</Label>
                         <Input type="text" placeholder="Port of Discharge" value={portDischarge} onChange={(e) => setPortDischarge(e.target.value)} />
                     </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 justify-items-center justify-center items-start content-center gap-4 mb-4">
                     <div className="lg:-mt-8">
                         <SingleSearch
                             type="Origin Country"
@@ -251,22 +393,28 @@ export default function CreateParcelForm() {
                 </div>
                 <h1 className="text-xl mb-4">Sender Details:</h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 justify-items-center justify-center items-start content-center gap-4 mb-4">
-                    <div className="grid w-full min-w-sm items-center gap-1.5">
-                        <Label htmlFor="senderName">Sender Name:</Label>
-                        <Input
-                            type="text"
-                            placeholder="Sender Name"
-                            value={senderName}
-                            onChange={(e) => setSenderName(e.target.value)}
+                    <div className="lg:-mt-1">
+                        <SingleSearch
+                            type="Sender Name"
+                            list={senderNameOptions}
+                            selectedItem={senderName}
+                            setSelectedItem={(name) => {
+                                setSenderName(name);
+                                fetchCustomerDetails(name, "sender");
+                            }}
+                            showSearch={true}
+                            onInputChange={(value) => fetchCustomerNames(value, "sender")}
                         />
                     </div>
                     <div className="grid w-full min-w-sm items-center gap-1.5">
                         <Label htmlFor="senderAddress">Sender Address:</Label>
-                        <Input
-                            type="text"
+                        <textarea
+                            id="senderAddress"
                             placeholder="Sender Address"
                             value={senderAddress}
                             onChange={(e) => setSenderAddress(e.target.value)}
+                            className="w-full px-2 py-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            rows="4" // Set rows to control the height
                         />
                     </div>
                     <div className="lg:-mt-10">
@@ -326,22 +474,28 @@ export default function CreateParcelForm() {
                 </div>
                 <h1 className="text-xl mb-4">Receiver Details:</h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 justify-items-center justify-center items-start content-center gap-4 mb-4">
-                    <div className="grid w-full min-w-sm items-center gap-1.5">
-                        <Label htmlFor="receiverName">Receiver Name:</Label>
-                        <Input
-                            type="text"
-                            placeholder="Receiver Name"
-                            value={receiverName}
-                            onChange={(e) => setReceiverName(e.target.value)}
+                    <div className="lg:-mt-1">
+                        <SingleSearch
+                            type="Receiver Name"
+                            list={receiverNameOptions}
+                            selectedItem={receiverName}
+                            setSelectedItem={(name) => {
+                                setReceiverName(name);
+                                fetchCustomerDetails(name, "receiver");
+                            }}
+                            showSearch={true}
+                            onInputChange={(value) => fetchCustomerNames(value, "receiver")}
                         />
                     </div>
                     <div className="grid w-full min-w-sm items-center gap-1.5">
                         <Label htmlFor="receiverAddress">Receiver Address:</Label>
-                        <Input
-                            type="text"
+                        <textarea
+                            id="receiverAddress"
                             placeholder="Receiver Address"
                             value={receiverAddress}
                             onChange={(e) => setReceiverAddress(e.target.value)}
+                            className="w-full px-2 py-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            rows="4" // Set rows to control the height
                         />
                     </div>
                     <div className="">
