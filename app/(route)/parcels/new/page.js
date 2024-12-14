@@ -66,21 +66,105 @@ export default function CreateParcelForm() {
             price: "",
         }]
     }]);
-    const [parcelStatus, setParcelStatus] = useState([]);
+    const [totalChargeableWeight, setTotalChargeableWeight] = useState("")
+    const [service, setService] = useState("");
+    const [baseRate, setBaseRate] = useState(0);
+    const [profitRate, setProfitRate] = useState(0);
+    const [discountedProfitRate, setDiscountedProfitRate] = useState(0);
     const [subtotal, setSubtotal] = useState(0);
-    const [total, setTotal] = useState(0);
+    const [cgstPercent, setCgstPercent] = useState(0);
+    const [sgstPercent, setSgstPercent] = useState(0);
+    const [igstPercent, setIgstPercent] = useState(0);
+    const [cgst, setCgst] = useState(0);
+    const [sgst, setSgst] = useState(0);
+    const [igst, setIgst] = useState(0);
+    let discount = 0;
+
+    const rate = Math.ceil(subtotal / totalChargeableWeight);
+    if (discountedProfitRate > 0) {
+        discount = Math.ceil((profitRate - discountedProfitRate) * totalChargeableWeight)
+    }
+    const taxableAmount = Math.ceil(subtotal - discount)
+    const total = Math.ceil(taxableAmount + cgst + sgst + igst);
 
     const [senderNameOptions, setSenderNameOptions] = useState([]);
     const [receiverNameOptions, setReceiverNameOptions] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         getInvoiceNumber();
     }, []);
 
     useEffect(() => {
+        // Calculate the total chargeable weight
+        const totalWeight = boxes.reduce((acc, box) => {
+            const chargeableWeight = parseFloat(box.chargeableWeight) || 0; // Parse as a number and default to 0 if invalid
+            return acc + chargeableWeight;
+        }, 0); // Initial accumulator value is 0
+
+        // Update the totalChargeableWeight state
+        setTotalChargeableWeight(Math.round(totalWeight));
+    }, [boxes]);
+
+    useEffect(() => {
         CheckBillToSelector()
     }, [billToSelector]);
+
+    // Fetch rate when service or dependent variables change
+    useEffect(() => {
+        if (totalChargeableWeight && receiverCountry && service) {
+            getRate(service.toLowerCase());
+        }
+    }, [service, totalChargeableWeight, receiverCountry]);
+
+    // Update subtotal when baseRate or profitRate changes
+    useEffect(() => {
+        setSubtotal((baseRate * totalChargeableWeight) + (profitRate * totalChargeableWeight));
+    }, [baseRate, profitRate, totalChargeableWeight]);
+
+    // Update tax calculations when relevant percentages or subtotal changes
+    useEffect(() => {
+        setCgst((cgstPercent * taxableAmount) / 100);
+        setSgst((sgstPercent * taxableAmount) / 100);
+        setIgst((igstPercent * taxableAmount) / 100);
+    }, [cgstPercent, sgstPercent, igstPercent, subtotal, taxableAmount]);
+
+    const getRate = async (type) => {
+        try {
+            const response = await axios.get("/api/rate", {
+                params: {
+                    type,
+                    weight: totalChargeableWeight,
+                    country: receiverCountry,
+                    profitPercent: 50,
+                },
+            });
+
+            if (response.data) {
+                const data = response.data;
+
+                setBaseRate(Math.ceil(data.baseCharges / totalChargeableWeight));
+                setProfitRate(Math.ceil(data.profitCharges / totalChargeableWeight));
+
+                // Update tax percentages based on GST
+                if (gst.length === 0) {
+                    setCgstPercent(9);
+                    setSgstPercent(9);
+                    setIgstPercent(0);
+                }
+                else if (!gst.startsWith("27")) {
+                    setIgstPercent(18);
+                    setCgstPercent(0);
+                    setSgstPercent(0);
+                } else {
+                    setCgstPercent(9);
+                    setSgstPercent(9);
+                    setIgstPercent(0);
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching rate:", error.response?.data || error.message);
+        }
+    };
 
     const CheckBillToSelector = (name, address, contact) => {
         if (billToSelector === "Sender") {
@@ -138,8 +222,6 @@ export default function CreateParcelForm() {
             setSenderNameOptions([]);
             return;
         }
-
-        setIsLoading(true);
         try {
             const response = await axios.get(`/api/customer?query=${query}`);
             type === "sender" ?
@@ -147,8 +229,6 @@ export default function CreateParcelForm() {
                 : setReceiverNameOptions(response.data.map((customer) => customer.name));
         } catch (error) {
             console.error("Error fetching customer names:", error);
-        } finally {
-            setIsLoading(false);
         }
     };
 
@@ -259,11 +339,92 @@ export default function CreateParcelForm() {
         setBoxes(updatedBoxes);
     };
 
+    const saveParcel = async () => {
+        try {
+            console.log("Inside Save Parcel Function");
+            const parcelData = {
+                parcelType,
+                staffId,
+                invoiceNumber,
+                date,
+                fromCountry,
+                toCountry,
+                vesselFlight,
+                portDischarge,
+                originCountry,
+                expRef,
+                preCarriage,
+                placeReceipt,
+                portLoading,
+                finalDestination,
+                countryFinalDestination,
+                trackingNumber,
+                sender: {
+                    name: senderName,
+                    address: senderAddress,
+                    country: senderCountry,
+                    zipCode: senderZipCode,
+                    contact: senderContact,
+                    kyc: {
+                        type: kycType,
+                        kyc,
+                    },
+                },
+                receiver: {
+                    name: receiverName,
+                    address: receiverAddress,
+                    country: receiverCountry,
+                    zipCode: receiverZipCode,
+                    contact: receiverContact,
+                },
+                billTo: {
+                    name: billToName,
+                    address: billToAddress,
+                    contact: billToContact,
+                },
+                gst,
+                boxes,
+                baseRate,
+                profitRate,
+                rate,
+                subtotal,
+                service,
+                taxes: {
+                    cgst: {
+                        percent: cgstPercent,
+                        amount: cgst,
+                    },
+                    sgst: {
+                        percent: sgstPercent,
+                        amount: sgst,
+                    },
+                    igst: {
+                        percent: igstPercent,
+                        amount: igst,
+                    },
+                },
+                total,
+            };
+
+            const response = await axios.post("/api/gst-parcels", parcelData);
+
+            if (response.status === 200) {
+                console.log("Parcel saved successfully:", response.data);
+                alert("Parcel saved successfully!");
+            } else {
+                console.error("Failed to save parcel:", response.data);
+                alert("Failed to save the parcel. Please try again.");
+            }
+        } catch (error) {
+            console.error("Error saving parcel:", error.response?.data || error.message);
+            alert("An error occurred while saving the parcel.");
+        }
+    };
 
     return (
         <div className="container mx-auto px-2">
             <h1 className="text-2xl font-bold mb-4">Create GST Parcel</h1>
-            <form>
+            <form onSubmit={saveParcel}>
                 {/* General Parcel Information */}
                 <h1 className="text-xl mb-4">Basic Details for Shipping</h1>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 justify-items-center justify-center items-start content-center gap-4 mb-4">
@@ -728,6 +889,149 @@ export default function CreateParcelForm() {
                     </button>
                 </div>
 
+                <h1 className="text-xl mb-4">Service:</h1>
+                <p>Total Chargeable Weight: {totalChargeableWeight}</p>
+                <div className="">
+                    <SingleSearch
+                        type="Select Service"
+                        list={["DHL", "FedEx", "UPS", "DTDC", "SkyNet", "Atlantic", "Aramex", "Orbit",]}
+                        topList={["DHL", "FedEx", "UPS", "DTDC", "SkyNet", "Atlantic", "Aramex", "Orbit",]}
+                        selectedItem={service}
+                        setSelectedItem={setService}
+                        showSearch={false}
+                    />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 justify-items-center justify-center items-start content-center gap-4 mb-4">
+                    <div>
+                        <Label htmlFor="baseRate">Base Rate:</Label>
+                        <Input
+                            type="number"
+                            placeholder="Base Rate"
+                            value={baseRate}
+                            readOnly={true}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="profitRate">Profit Rate:</Label>
+                        <Input
+                            type="number"
+                            placeholder="Profit Rate"
+                            value={profitRate}
+                            readOnly={true}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="discountedProfitRate">Discounted Profit Rate:</Label>
+                        <Input
+                            type="number"
+                            placeholder="Discounted Profit Rate"
+                            value={discountedProfitRate}
+                            onChange={(e) => setDiscountedProfitRate(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="rate">Rate:</Label>
+                        <Input
+                            type="number"
+                            placeholder="Rate"
+                            value={rate}
+                            readOnly={true}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="baseRate">Sub Total:</Label>
+                        <Input
+                            type="number"
+                            placeholder="Sub Total"
+                            value={subtotal}
+                            readOnly={true}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="discount">Discount:</Label>
+                        <Input
+                            type="number"
+                            placeholder="Discount"
+                            value={discount}
+                            readOnly={true}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="taxableAmount">Taxable Amount:</Label>
+                        <Input
+                            type="number"
+                            placeholder="Taxable Amount"
+                            value={taxableAmount}
+                            readOnly={true}
+                        />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 justify-items-center justify-end items-start content-center gap-2 mb-4 max-w-54">
+                    <div>
+                        <Label htmlFor="cgstPercent">CGST Percent</Label>
+                        <Input
+                            type="number"
+                            placeholder="cgstPercent"
+                            value={cgstPercent}
+                            onChange={(e) => setCgstPercent(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="cgst">CGST</Label>
+                        <Input
+                            type="number"
+                            placeholder="cgst"
+                            value={cgst}
+                            readOnly={true}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="sgstPercent">SGST Percent</Label>
+                        <Input
+                            type="number"
+                            placeholder="sgstPercent"
+                            value={sgstPercent}
+                            onChange={(e) => setSgstPercent(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="sgst">SGST</Label>
+                        <Input
+                            type="number"
+                            placeholder="sgst"
+                            value={sgst}
+                            readOnly={true}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="igstPercent">IGST Percent</Label>
+                        <Input
+                            type="number"
+                            placeholder="igstPercent"
+                            value={igstPercent}
+                            onChange={(e) => setIgstPercent(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="igst">IGST</Label>
+                        <Input
+                            type="number"
+                            placeholder="igst"
+                            value={igst}
+                            readOnly={true}
+                        />
+                    </div>
+                    <div></div>
+                    <div>
+                        <Label htmlFor="total">Total</Label>
+                        <Input
+                            type="number"
+                            placeholder="Total"
+                            value={total}
+                            readOnly={true}
+                        />
+                    </div>
+                </div>
                 {/* Submit */}
                 <button
                     type="submit"

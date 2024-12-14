@@ -5,10 +5,7 @@ const GstParcelSchema = new Schema({
     parcelType: String,
     staffId: String,
     invoiceNumber: String,
-    date: {
-        date: String,
-        time: String,
-    },
+    date: Date,
     fromCountry: String,
     toCountry: String,
     vesselFlight: String,
@@ -29,6 +26,7 @@ const GstParcelSchema = new Schema({
     boxes: Array,
     parcelStatus: Array,
     subtotal: Number,
+    service: String,
     taxes: {
         cgst: {
             percent: Number,
