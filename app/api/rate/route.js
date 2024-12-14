@@ -133,6 +133,4 @@ export async function GET(req) {
     }
 }
 
-export const config = {
-    runtime: "edge", // Optional for using the edge runtime
-};
+export const runtime = "edge"
